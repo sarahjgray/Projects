@@ -1,0 +1,197 @@
+###Project uses spatial analysis to find out whether or not BC Parks and Protected Areas adequates protects species at risk and native plant species###
+#Workspace + GDB + Data
+
+#Change this path
+my_path = r"Z:\data"
+
+#variables for shape files
+##data can be found from the BC Open Data Catalogue##
+
+layer1= my_path + r"\parks\TA_PARK_ECORES_PA_SVW\TA_PEP_SVW_polygon.shp"
+layer2= my_path + r"\species\WCP_CRITICAL_HABITAT_SP\CRTL_HAB_polygon.shp"
+layer3= my_path + r"\trees\quergar_o1.shp"
+#create new geodatabase 
+gdb_name = r"\finalproj.gdb"
+gdb_path = my_path + gdb_name
+
+arcpy.CreateFileGDB_management(my_path, gdb_name)
+
+#Set Workspace
+arcpy.env.workspcace = gdb_path
+
+print ("complete1")
+
+#Set Projection so all input files are the same projection#
+# input data is in NAD 1983 UTM Zone 10N coordinate system
+input_features = my_path + r"\species\WCP_CRITICAL_HABITAT_SP\CRTL_HAB_polygon.shp"
+
+# output data
+output_feature_class = my_path + r"\species\WCP_CRITICAL_HABITAT_SP\CRTL_HAB_polygon_project.shp"
+
+# create a spatial reference object for the output coordinate system
+out_coordinate_system = arcpy.SpatialReference("NAD 1983 UTM Zone 10N")
+
+# run the tool
+arcpy.Project_management(input_features, output_feature_class, out_coordinate_system)
+
+print("projection set")
+
+
+#Import layers using feature class to feature class
+import arcpy
+
+Parks = layer1
+Species = layer2
+Trees = layer3
+outLocation = gdb_path
+
+OutClassname = "Parks"
+OutClass2name = "Species"
+OutClass3name = "Trees"
+arcpy.FeatureClassToFeatureClass_conversion(Parks,outLocation,OutClassname)
+arcpy.FeatureClassToFeatureClass_conversion(Species, outLocation,OutClass2name)
+arcpy.FeatureClassToFeatureClass_conversion (Trees, outLocation, OutClass3name)
+
+print("import complete")
+
+#Set Variables for datasets and fields
+
+PA = gdb_path + r"\Parks"
+Spec = "CNM_ENG"
+GO = "QUERGAR"
+
+#Intersect Features
+inFeatures = ["Parks", "Species"]
+intersectOutput = "SpeciesinParks"
+arcpy.Intersect_analysis(inFeatures, intersectOutput, "ALL")
+
+inFeatures = ["Parks", "Trees"]
+intersectOutput = "GarryOaksinParks"
+arcpy.Intersect_analysis(inFeatures, intersectOutput, "ALL")
+
+print ("Intersect Complete")
+
+
+
+#Calculate total field values for each feature
+arcpy.Statistics_analysis("Parks", "Parks_Totals", [["Shape_Area","SUM"]])
+arcpy.Statistics_analysis("Species","SpeciesTotals", [["Shape_Area","SUM"]])
+arcpy.Statistics_analysis("Trees", "Trees_Totals", [["Shape_Area", "SUM"]])
+
+print("Totals Complete")
+
+
+#Use search cursor to calculate average area of SARA Species within Parks
+
+totalSpecies = 0
+recordsCounted = 0 
+average = 0
+
+with arcpy.da.SearchCursor ("SpeciesinParks", ("Shape_Area")) as cursor: 
+    for row in cursor:
+        totalSpecies += row [0]
+        recordsCounted += 1
+
+
+average = totalSpecies/ recordsCounted
+print ("Average Species in Park" + str(average))
+
+
+totalTrees = 0
+recordsCounted2 = 0
+average = 0
+
+with arcpy.da.SearchCursor ("GarryOaksinParks", ("Shape_Area")) as cursor:
+    for row in cursor:
+        totalTrees += row [0]
+        recordsCounted2+= 1
+
+
+average = totalTrees/ recordsCounted2
+print ("Average Garry Oaks in Parks" + str(average))
+
+
+print ("averages calculated")
+
+#Show where Parks are protecting species and Garry Oak Trees using an update and insert cursor
+
+#First Add fields
+
+arcpy.management.AddField ('SpeciesinParks', 'Protection','TEXT')
+arcpy.management.AddField ('GarryOaksinParks', 'Protection', 'TEXT')
+
+print ("fields added")
+
+#Assign Variables
+
+Protection = "Protection"
+
+Fields = ["Shape_Area", Protection]
+with arcpy.da.UpdateCursor("SpeciesinParks", Fields) as cursor:
+        for row in cursor:
+                if row[0] <= 255365 :       
+                        row[1] = "Not Protected"
+                elif row[0] > 255365:
+                        row[1] = "Protected"
+                
+
+                cursor.updateRow(row)
+
+
+#Assign Variables
+
+Protection = "Protection"
+
+Fields2 = ["Shape_Area", Protection]
+with arcpy.da.UpdateCursor("GarryOaksinParks", Fields2) as cursor:
+        for row in cursor:
+                if row[0] <= 780137 :       
+                        row[1] = "Not Protected"
+                elif row[0] > 780137:
+                        row[1] = "Protected"
+                
+
+                cursor.updateRow(row)
+				
+print ("Update and Insert Cursor Complete")
+
+#convert polygon's to points for kernel density
+
+garryoaksP = "GarryOaksinParks"
+speciesP = "SpeciesinParks"
+outFeatureClass= gdb_path + "points"
+
+arcpy.FeatureToPoint_management(garryoaksP,outFeatureClass,"INSIDE")
+arcpy.FeatureToPoint_management(speciesP,outFeatureClass,"INSIDE")
+
+#Kernel Density to calculate surface density
+import arcpy
+from arcpy import env
+from arcpy.sa import *
+
+inFeatures = "finalproj.shp"
+populationField = "NONE"
+
+#Check Spatial Analyst extension license
+arcpy.CheckOutExtension("Spatial")
+
+#Execute KernelDensity
+outKernelDensity = KernelDensity (inFeatures,populationField)
+
+#Save Output
+outKernelDensity.save(r"Z:/data")
+
+print("kernel density complete")
+
+#Use Near function to find garry oak trees proximity to parks
+#assign variables
+in_features = "trees"
+near_features = "parks"
+location = "LOCATION"
+search_radius = "1000 meters"
+
+
+arcpy.Near_analysis(in_features,near_features,search_radius, location)
+
+print ("project complete")
+
