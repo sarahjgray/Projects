@@ -1,0 +1,164 @@
+###Project to perform spatial queries based on set criteria within British Columbia###
+
+#Workspace + GDB + Data
+
+
+#Change this path
+my_path = r"C:\Users\sarahjgray\Desktop\data"
+
+#variables for shape files
+
+layer1= my_path + r"\GSR_HOSPITALS_SVW\HOSPITALS_point.shp"
+layer2= my_path + r"\NRC_POPULATED_PLACES_1M_SP\POP_PL_1M_point.shp"
+#create new geodatabase 
+gdb_name = r"\lab3_gdb.gdb"
+gdb_path = my_path + gdb_name
+
+arcpy.CreateFileGDB_management(my_path, gdb_name)
+
+#Set Workspace
+arcpy.env.workspcace = gdb_path
+
+
+#Task 2#
+#Import layers using feature class to feature class
+import arcpy
+
+hospitals = layer1
+PopulatedPlaces = layer2
+outLocation = gdb_path
+
+OutClassname = "hospitals"
+OutClass2name = "PopulatedPlaces"
+arcpy.FeatureClassToFeatureClass_conversion(hospitals,outLocation,OutClassname)
+arcpy.FeatureClassToFeatureClass_conversion(PopulatedPlaces, outLocation,OutClass2name)
+
+print ("Task 2# complete")
+
+#Task 3#
+#Assign dataset and fields as variables
+
+PopPlace =  gdb_path + r"\PopulatedPlaces"
+EstPop = "EST_POP"
+CityNames = "NAME"
+city = "Revelstoke" 
+
+print ("Task 3# Complete")
+
+#Task 4#
+#Use search cursor to calculate average population of all populated places
+
+totalPopulation = 0
+recordsCounted = 0 
+average = 0
+
+with arcpy.da.SearchCursor (PopPlace, (EstPop)) as cursor: 
+    for row in cursor:
+        totalPopulation += row [0]
+        recordsCounted += 1
+
+
+average = totalPopulation/recordsCounted
+print ("Average Population for all cities is " + str(average))
+print ("Task 4 Complete")
+
+#Average Population for all cities is 3096.4995586937334
+#Task 4 Complete
+
+## Task 5 ##
+##Determine the population size of your assigned city and the distance of this city to the nearest hospitals
+
+RevelstokePopulation = 0
+
+arcpy.analysis.Near(PopPlace, hospitals)
+
+Near = "NEAR_DIST"
+
+Fields = [CityNames, EstPop, Near]
+
+minPop = 0.9*int(RevelstokePopulation)
+
+maxPop = 1.1*int(RevelstokePopulation)
+
+with arcpy.da.SearchCursor (PopPlace, Fields) as cursor:
+    for row in cursor:
+        if row [0] == city:
+            RevelstokePopulation += row [1] #Near function
+            print('City Name =', row [0], 'Population =', row [1], 'Distance to Hospital =',row [2])
+            minPop = 0.9*int(RevelstokePopulation)
+            maxPop = 1.1*int(RevelstokePopulation)
+            print (minPop, maxPop)
+#City Name = Revelstoke Population = 6869.0 Distance to Hospital = 2665.5232774052147
+#6182.1 7555.900000000001
+			
+
+
+
+print ("Task 5 Complete")
+
+#Task 5 Complete
+
+##Task 6##
+# Calculate the average distance to hospitals for cities +\- 10% of your assigned city
+
+AvgDist =  0
+
+Records2 = 0 
+
+with arcpy.da.SearchCursor(PopPlace, Fields) as cursor:
+    for row in cursor:
+        if (row[1] >= minPop) + (row[1] <= maxPop):
+            AvgDist += row [2]
+            Records2 += 1
+           
+print (row [0])			
+print (Records2)
+print (AvgDist)
+
+average = AvgDist / Records2
+print ('The average distance to hospitals for the selected cities =', average )
+print ("Task 6 Complete")
+#Task 6 Complete
+#Basque 18 1133 40727341.241500385
+#The average distance to hospitals for the selected cities = 35946.461819506076
+
+#Task 7##
+#Provide a qualitative classification of distance to hospitals for different size cities
+#First Add fields
+
+arcpy.management.AddField ('PopulatedPlaces', 'CitySize', 'TEXT')
+arcpy.management.AddField ('PopulatedPlaces','Dist2Hosp','TEXT')
+
+#Assign Variables
+
+CitySize = "CitySize"
+dist = "Dist2Hosp"
+
+Fields2 = [EstPop, CitySize]
+with arcpy.da.UpdateCursor(PopPlace, Fields2) as cursor:
+        for row in cursor:
+                if row[0] <= 500:       
+                        row[1] = "Small"
+                elif row[0] > 500 and row[0] <= 10000:
+                        row[1] = "Med"
+                elif row[0] > 10000:
+                        row[1] = "Large"
+
+                cursor.updateRow(row)
+
+
+Fields3 = [Near, dist]
+with arcpy.da.UpdateCursor(PopPlace, Fields3) as cursor:
+        for row in cursor:
+                if row [0] <= 1000:
+                        row[1] = "Very Close"
+                elif row[0] > 1000 and row[0] <= 10000:
+                        row[1] = "Close"
+                elif row[0] > 10000:
+                        row[1] = "Far"
+
+                cursor.updateRow(row)
+
+	
+
+print ("Task 7 complete")
